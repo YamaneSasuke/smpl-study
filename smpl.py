@@ -77,23 +77,47 @@ def pose_blend_shapes(theta, p):
         Bp += (R[i] - R_star[i]) * p[i]
     return Bp
 
-def blend_skinning(T_bar, J, omega_desires, W):
+def blend_skinning(T_bar, J, omega_desires, W, Kintree_table):
     Ts = []
-    temp_theta = np.zeros_like(theta)
+    temp_theta = np.zeros_like(omega_desires)
     G = np.eye(4)
     G_star_inv = np.eye(4)
     G_des = np.eye(4)
-    for omega_des, omega_temp, j in zip(omega_desires, temp_theta, J):
-        j = trans(j, G_star_inv)
+    G_des_list = []
+    G_star_inv_list = []
+
+    j = trans(J[0], G_star_inv)
+    G_star_k = transform(j[0], temp_theta[0])
+    G_des_k = transform(j[0], omega_desires[0])
+    G_star_inv = np.linalg.inv(G_star_k).dot(G_star_inv)
+    G_des = G_des.dot(G_des_k)
+    G = G_des.dot(G_star_inv)
+
+    G_des_list.append(G_des)
+    G_star_inv_list.append(G_star_inv)
+
+    T_k = trans(T_bar, G)
+    Ts.append(T_k)
+
+    i = 1
+    for omega_des, omega_temp, j in zip(omega_desires[1:], temp_theta[1:], J[1:]):
+        j = trans(j, G_star_inv_list[Kintree_table[0][i]])
         G_star_k = transform(j[0], omega_temp)
         G_des_k = transform(j[0], omega_des)
-        G_star_inv = np.linalg.inv(G_star_k).dot(G_star_inv)
-        G_des = G_des.dot(G_des_k)
+        G_star_inv = np.linalg.inv(G_star_k).dot(G_star_inv_list[Kintree_table[0][i]])
+        G_des = G_des_list[Kintree_table[0][i]].dot(G_des_k)
         G = G_des.dot(G_star_inv)
+
+        G_des_list.append(G_des)
+        G_star_inv_list.append(G_star_inv)
+
         T_k = trans(T_bar, G)
         Ts.append(T_k)
+        i += 1
 
+#    i = 0
 #    for t in Ts:
+#        print(i)
 #        fig = plt.figure()
 #        ax = Axes3D(fig)
 #        ax.plot(*J.T, 'o-')
@@ -104,6 +128,7 @@ def blend_skinning(T_bar, J, omega_desires, W):
 #        plt.gca().set_aspect(1)
 #        plt.grid()
 #        plt.show()
+#        i += 1
 
     # use einsum instead of for loop
     T_prime = np.zeros_like(T_bar)
@@ -116,10 +141,10 @@ def blend_skinning(T_bar, J, omega_desires, W):
 if __name__ == '__main__':
     fname_or_dict = 'basicModel_m_lbs_10_207_0_v1.0.0.pkl'
     beta_size = 10
-    pose_para = np.array([[0., 0, 0],  # root
+    pose_para = np.array([[1., 0, 0],  # root
                           [0, 0, 0],  # 1
                           [0, 0, 0],  # 2
-                          [1, 0, 0],  # 3
+                          [0, 0, 0],  # 3
                           [0, 0, 0],  # 4
                           [0, 0, 0],  # 5
                           [0, 0, 0],  # 6
@@ -132,9 +157,9 @@ if __name__ == '__main__':
                           [0, 0, 0],  # 13
                           [0, 0, 0],  # 14
                           [0, 0, 0],  # 15
-                          [0, 0, 0],  # 16
+                          [0, 0, np.deg2rad(90)],  # 16
                           [0, 0, 0],  # 17
-                          [0, 0, 0],  # 18
+                          [0, 0, np.deg2rad(0)],  # 18
                           [0, 0, 0],  # 19
                           [0, 0, 0],  # 20
                           [0, 0, 0],  # 21
@@ -148,16 +173,18 @@ if __name__ == '__main__':
     T_bar = m['T_bar']  # shape=(6890, 3)
     W = m['W']  # shape=(6890, 24)
     Kintree_table = m['kintree_table']  # shape=(2, 24)
+    face = m['f']
 
     ## Assign random pose and shape parameters
     theta = np.array(pose_para)  # 関節角
-    beta = np.random.rand(beta_size) * .1  # 体形パラメータ
+#    beta = np.random.rand(beta_size) * .1  # 体形パラメータ
+    beta = np.zeros(beta_size)
 
     Bs = shape_blend_shapes(beta, S)  # shape=(6890, 3)
     Joint = joint_locations(beta, J, T_bar, S)  # shape=(24, 3)
     Bp = pose_blend_shapes(theta, P)  # shape=(6890, 3)
     Tp = T_bar + Bs + Bp  # shape=(6890, 3)
-    T = blend_skinning(Tp, Joint, theta, W)  # shape=(6890, 3)
+    T = blend_skinning(Tp, Joint, theta, W, Kintree_table)  # shape=(6890, 3)
 
     fig = plt.figure()
     ax = Axes3D(fig)
@@ -169,3 +196,12 @@ if __name__ == '__main__':
     plt.gca().set_aspect(1)
     plt.grid()
     plt.show()
+
+    ## Write to an .obj file
+    outmesh_path = './hello_smpl.obj'
+    with open( outmesh_path, 'w') as fp:
+        for v in T:
+            fp.write( 'v %f %f %f\n' % ( v[0], v[1], v[2]) )
+
+        for f in face+1: # Faces are 1-based, not 0-based in obj files
+            fp.write( 'f %d %d %d\n' %  (f[0], f[1], f[2]) )

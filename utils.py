@@ -83,6 +83,16 @@ def shapedirs(a):
     del a.__dict__[b'_depends_on_deps']
     return a
 
+def face(a):
+    a.__dict__['f'] = a.__dict__[b'f']
+    del a.__dict__[b'f']
+    a.__dict__['_dirty_vars'] = 'x'
+    del a.__dict__[b'_dirty_vars']
+    a.__dict__['_itr'] = a.__dict__[b'_itr']
+    del a.__dict__[b'_itr']
+    a.__dict__['_depends_on_deps'] = a.__dict__[b'_depends_on_deps']
+    del a.__dict__[b'_depends_on_deps']
+    return a
 
 def load(fname_or_dict):
     dd = pickle.load(open(fname_or_dict, 'rb'), encoding='bytes')
@@ -95,7 +105,6 @@ def load(fname_or_dict):
 
 def fix_params(m):
     del m['J_regressor_prior']
-    del m['f']
     del m['J']
     del m['weights_prior']
     del m['vert_sym_idxs']
